@@ -1,0 +1,27 @@
+{
+  "ResearchAndDevelopment": {
+    "xbrl_column": "ResearchAndDevelopmentExpense",
+    "table_aliases": [
+      "Research and development",
+      "Research and development expense",
+      "Technology and development"
+    ]
+  },
+  "SalesRevenueNet": {
+    "xbrl_column": "SalesRevenueNet",
+    "table_aliases": [
+      "Total net revenues",
+      "Net sales",
+      "Operating revenues",
+      "Total revenue"
+    ]
+  },
+  "NetIncomeLoss": {
+    "xbrl_column": "NetIncomeLoss",
+    "table_aliases": [
+      "Net income",
+      "Net loss",
+      "Net income (loss)"
+    ]
+  }
+}
