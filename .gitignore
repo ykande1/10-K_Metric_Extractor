@@ -1,0 +1,29 @@
+# --- Python Environment ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+venv/
+ENV/
+env/
+*.log
+
+# --- Heavy Data Files & Archives  ---
+data/*.csv
+data/*.zip
+10k_filings/
+10k_section/
+*.sqlite
+*.db
+
+# --- Outputs ---
+results/*.csv
+results/*.json
+*.pdf
+pipeline_doc.html
+
+# --- OS & Editor Files ---
+.DS_Store
+.vscode/
+.idea/
