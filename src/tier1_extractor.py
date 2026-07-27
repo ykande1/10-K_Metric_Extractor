@@ -23,7 +23,9 @@ class ExtractionResult:
     cik: int
     ticker: str
     company_name: str
-    fiscal_year: int
+    document_fiscal_year: int
+    period_start_date: str
+    period_end_date: str
     metric_name: str
     extracted_value: Optional[float]
     currency: str
@@ -108,23 +110,31 @@ class Tier1Extractor:
         extracted_val = None
         source_snippet = ""
         winning_tier = "MISS"
+        start_date = "N/A"
+        end_date = "N/A"
 
-        # Check if column exists, then drop blank quarterly NaN rows before taking the value
+        # Check if column exists and grab valid annual rows
         if not xbrl_match.empty and xbrl_col in xbrl_match.columns:
-            valid_vals = xbrl_match[xbrl_col].dropna()
-            if not valid_vals.empty:
-                extracted_val = float(valid_vals.values[0])
+            valid_rows = xbrl_match.dropna(subset=[xbrl_col])
+            if not valid_rows.empty:
+                # Grab the first valid row object
+                first_row = valid_rows.iloc[0]
+                extracted_val = float(first_row[xbrl_col])
                 winning_tier = "TIER_1_XBRL"
                 source_snippet = f"xbrl.csv -> Column: {xbrl_col}"
-
-
+                
+                # Capture the exact reporting period boundaries from the XBRL file
+                start_date = str(first_row.get("start_date", "UNKNOWN"))
+                end_date = str(first_row.get("end_date", "UNKNOWN"))
 
         return ExtractionResult(
             extraction_id=f"{cik}_{year}_{metric_name}",
             cik=cik,
             ticker=ticker,
             company_name=company_name,
-            fiscal_year=year,
+            document_fiscal_year=year,
+            period_start_date=start_date,
+            period_end_date=end_date,
             metric_name=metric_name,
             extracted_value=extracted_val,
             currency="USD",
@@ -134,6 +144,7 @@ class Tier1Extractor:
             edgar_url=edgar_url,
         )
 
+        
     def run_sweep(self, target_ciks: List[int], target_years: List[int]) -> pd.DataFrame:
         """Runs the extraction pipeline across a list of companies and fiscal years."""
         results = []
@@ -180,9 +191,20 @@ if __name__ == "__main__":
 
     # Display console preview of the extractions for testing purposes
     print("\n--- TIER 1 EXTRACTION PREVIEW ---")
-    preview_cols = ["extraction_id", "company_name", "fiscal_year", "metric_name", "extracted_value", "winning_tier"]
-    print(output_df[preview_cols].to_string(index=False))
 
+    preview_cols = [
+        "extraction_id", 
+        "company_name", 
+        "document_fiscal_year", 
+        "period_start_date", 
+        "period_end_date", 
+        "metric_name", 
+        "extracted_value", 
+        "winning_tier"
+    ]
+    
+    print(output_df[preview_cols].to_string(index=False))
+   
 
 #FOR FULL SWEEP ACROSS ALL COMPANIES, UNCOMMENT:
 
