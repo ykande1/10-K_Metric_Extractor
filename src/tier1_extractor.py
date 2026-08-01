@@ -23,9 +23,10 @@ class ExtractionResult:
     cik: int
     ticker: str
     company_name: str
-    document_fiscal_year: int
-    period_start_date: str
-    period_end_date: str
+    document_fiscal_year: int  
+    metric_fiscal_year: int 
+    period_start_date: str     
+    period_end_date: str       
     metric_name: str
     extracted_value: Optional[float]
     currency: str
@@ -35,7 +36,6 @@ class ExtractionResult:
     edgar_url: str
     audit_status: str = "UNVERIFIED"
     audit_notes: str = ""
-
 
 class Tier1Extractor:
     def __init__(self):
@@ -133,6 +133,7 @@ class Tier1Extractor:
             ticker=ticker,
             company_name=company_name,
             document_fiscal_year=year,
+            metric_fiscal_year=int(end_date[:4]) if end_date[:4].isdigit() else year,
             period_start_date=start_date,
             period_end_date=end_date,
             metric_name=metric_name,
