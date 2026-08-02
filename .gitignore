@@ -10,9 +10,11 @@ env/
 *.log
 
 # --- Heavy Data Files & Archives  ---
+data/
 data/*.csv
 data/*.zip
 10k_filings/
+data/10k_section/
 10k_section/
 *.sqlite
 *.db
