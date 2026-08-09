@@ -11,10 +11,18 @@ RESULTS_DIR = BASE_DIR / "results"
 DATA_DIR = BASE_DIR / "data" / "10k_section"
 TIER1_FILE = RESULTS_DIR / "extraction_results_tier1.csv"
 
-
-#PLACEHOLDER: Add logging configuration here:
+#PLACEHOLDER HEADER: Add logging configuration here:
 HEADERS = {
-    #"User-Agent": "College Research Student/1.0 (your_email@domain.edu)"
+    #"User-Agent": "College Research Student/1.0 (placeholder@email.com)"
+}
+
+import re
+
+# Standardize the variations in SEC metric names
+METRIC_MAPPING = {
+    "SalesRevenueNet": ["revenue", "net sales", "total revenues", "sales"],
+    "NetIncomeLoss": ["net income", "net loss", "net income (loss)"],
+    "ResearchAndDevelopment": ["research and development", "r&d", "research and development expenses"]
 }
 
 
@@ -118,6 +126,81 @@ def find_income_statement_table(tables):
     return None
 
 
+def extract_metric_value(table, metric_name, target_year):
+    """Finds the correct row and column, detects scale, and extracts the true numerical value."""
+    rows = table.find_all('tr')
+    offset_from_right = -1
+    multiplier = 1  # Default to exact numbers if no scale is found
+    
+    # 1. Sweep headers for the target year AND detect the reporting scale
+    for row in rows[:15]:
+        # Grab the entire row's text as one lowercase string to search for scale keywords
+        row_text_raw = row.get_text(separator=' ', strip=True).lower()
+        
+        if "in millions" in row_text_raw:
+            multiplier = 1000000
+        elif "in thousands" in row_text_raw:
+            multiplier = 1000
+        elif "in billions" in row_text_raw:
+            multiplier = 1000000000
+            
+        # Standard cell extraction for year alignment
+        cell_texts = [re.sub(r'\s+', ' ', cell.get_text(strip=True)) for cell in row.find_all(['th', 'td']) if cell.get_text(strip=True) and cell.get_text(strip=True) != '$']
+        
+        for idx, text in enumerate(cell_texts):
+            if str(target_year) in text or str(target_year + 1) in text:
+                if offset_from_right == -1: # Only set once
+                    offset_from_right = len(cell_texts) - idx
+                
+    if offset_from_right == -1:
+        return "YEAR_NOT_FOUND"
+
+    # 2. Find the row for the target metric
+    aliases = METRIC_MAPPING.get(metric_name, [metric_name.lower()])
+    
+    for row in rows[5:]: 
+        cell_texts = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th']) if cell.get_text(strip=True) and cell.get_text(strip=True) != '$']
+        
+        if not cell_texts:
+            continue
+            
+        row_header = cell_texts[0].lower()
+        
+        # Check if the row matches our metric aliases
+        if any(alias in row_header for alias in aliases):
+            target_idx = len(cell_texts) - offset_from_right
+            
+            if 0 < target_idx < len(cell_texts):
+                raw_value = cell_texts[target_idx]
+                
+                # Clean up formatting
+                clean_val = raw_value.replace(',', '')
+                is_negative = False
+                
+                # Handle standard negative accounting formats
+                if clean_val.startswith('(') and clean_val.endswith(')'):
+                    clean_val = clean_val[1:-1]
+                    is_negative = True
+                elif clean_val.startswith('-'):
+                    clean_val = clean_val[1:]
+                    is_negative = True
+                    
+                # Convert to math variable, scale it, and return true dollar amount
+                try:
+                    numeric_val = float(clean_val)
+                    scaled_val = numeric_val * multiplier
+                    
+                    if is_negative:
+                        scaled_val = -scaled_val
+                        
+                    return int(scaled_val)
+                    
+                except ValueError:
+                    # Fallback if a cell contains a non-numeric character like a dash '-'
+                    return raw_value
+                
+    return "METRIC_ROW_NOT_FOUND"
+
 
 def test_hybrid_router():
     print("Loading Tier 1 results...")
@@ -149,18 +232,16 @@ def test_hybrid_router():
                 if income_table:
                     print("  -> Successfully isolated the Income Statement table!")
                     
-                    # Verification: Print the first 5 rows to the terminal
-                    print("\n--- TABLE VERIFICATION ---")
-                    rows = income_table.find_all('tr')
-                    for row in rows[:10]: # Checking the top 10 rows just in case of blank lines
-                        # Grab text from each cell, ignoring the empty ones
-                        row_text = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th']) if cell.get_text(strip=True)]
-                        if row_text:
-                            print(" | ".join(row_text))
-                    print("--------------------------\n")
+                    # NEW: Get the exact metric we are looking for in this row
+                    target_metric = row['metric_name']
+                    print(f"  -> Looking for: {target_metric} in {year}")
+                    
+                    extracted_value = extract_metric_value(income_table, target_metric, year)
+                    print(f"  -> EXTRACTED VALUE: {extracted_value}\n")
                     
                 else:
-                    print("  -> Could not isolate the Income Statement.")
+                    print("  -> Could not isolate the Income Statement.\n")
 
 if __name__ == "__main__":
     test_hybrid_router()
+

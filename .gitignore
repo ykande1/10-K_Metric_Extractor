@@ -8,6 +8,7 @@ venv/
 ENV/
 env/
 *.log
+.env
 
 # --- Heavy Data Files & Archives  ---
 data/
