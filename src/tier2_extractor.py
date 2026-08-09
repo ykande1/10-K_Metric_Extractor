@@ -14,6 +14,7 @@ TIER1_FILE = RESULTS_DIR / "extraction_results_tier1.csv"
 #PLACEHOLDER HEADER: Add logging configuration here:
 HEADERS = {
     #"User-Agent": "College Research Student/1.0 (placeholder@email.com)"
+    "User-Agent": "College of Wooster Research Student/1.0 (ykandel27@email.com)"
 }
 
 import re
@@ -196,52 +197,67 @@ def extract_metric_value(table, metric_name, target_year):
                     return int(scaled_val)
                     
                 except ValueError:
-                    # Fallback if a cell contains a non-numeric character like a dash '-'
+                    # Fallback if a cell contains a non-numeric character like a dash
                     return raw_value
                 
     return "METRIC_ROW_NOT_FOUND"
 
-
-def test_hybrid_router():
+def run_tier2_extraction():
     print("Loading Tier 1 results...")
     try:
         df = pd.read_csv(TIER1_FILE)
     except FileNotFoundError:
         print("Error: Run Tier 1 first.")
         return
-        
-    miss_df = df[df["winning_tier"] == "MISS"].copy()
-    unique_docs = miss_df.drop_duplicates(subset=["cik", "document_fiscal_year"])
+
+    # Filter for the exact indices of rows that need processing
+    missing_indices = df[df["winning_tier"] == "MISS"].index
+    print(f"Found {len(missing_indices)} missing metrics to extract. Starting Tier 2 Pipeline...\n")
     
-    for _, row in unique_docs.head(2).iterrows():
+    # Remove the [:5] later to run on the entire dataset
+    for idx in missing_indices[:5]: 
+        row = df.loc[idx]
         cik = row['cik']
         year = row['document_fiscal_year']
         url = row['edgar_url']
+        target_metric = row['metric_name']
         
-        print(f"\nProcessing CIK: {cik}, Year: {year}")
+        print(f"Processing CIK: {cik}, Year: {year} | Hunting for: {target_metric}")
         content, source = get_document_content(cik, url)
         
         if content:
-            if source == "sec_html":
-                print(f"  -> Successfully downloaded {len(content)} characters of HTML.")
             tables = parse_financial_tables(content, source)
 
-            # Filter down to the Income Statement and verify
             if tables:
                 income_table = find_income_statement_table(tables)
                 if income_table:
-                    print("  -> Successfully isolated the Income Statement table!")
-                    
-                    # NEW: Get the exact metric we are looking for in this row
-                    target_metric = row['metric_name']
-                    print(f"  -> Looking for: {target_metric} in {year}")
-                    
                     extracted_value = extract_metric_value(income_table, target_metric, year)
                     print(f"  -> EXTRACTED VALUE: {extracted_value}\n")
                     
+                    # Update the existing columns directly
+                    df.at[idx, "extracted_value"] = extracted_value
+                    
+                    # Only update winning_tier to "tier_2" if we successfully processed the table
+                    df.at[idx, "winning_tier"] = "TIER_2"
                 else:
-                    print("  -> Could not isolate the Income Statement.\n")
+                    print("  -> ERROR: Could not isolate the Income Statement.\n")
+                    df.at[idx, "extracted_value"] = "TABLE_NOT_FOUND"
+            else:
+                print("  -> ERROR: No financial tables parsed.\n")
+                df.at[idx, "extracted_value"] = "NO_TABLES"
+        else:
+            print("  -> ERROR: Download failed.\n")
+            df.at[idx, "extracted_value"] = "DOWNLOAD_FAILED"
+
+    # Save the updated DataFrame to a new CSV file to preserve the original Tier 1 data
+    output_file = "results/tier2_results.csv"
+    
+    # Ensure the data directory exists before saving
+    import os
+    os.makedirs("data", exist_ok=True)
+    
+    df.to_csv(output_file, index=False)
+    print(f"Extraction batch complete! Results successfully saved to {output_file}")
 
 if __name__ == "__main__":
-    test_hybrid_router()
-
+    run_tier2_extraction()
