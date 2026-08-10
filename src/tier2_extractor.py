@@ -11,9 +11,9 @@ RESULTS_DIR = BASE_DIR / "results"
 DATA_DIR = BASE_DIR / "data" / "10k_section"
 TIER1_FILE = RESULTS_DIR / "extraction_results_tier1.csv"
 
-#PLACEHOLDER HEADER: Add logging configuration here:
+# Add logging configuration here:
 HEADERS = {
-    #"User-Agent": "College Research Student/1.0 (placeholder@email.com)"
+    "User-Agent": "College of Wooster Research Student/1.0 (student@email.com)" #ADD REAL EMAIL HERE
 }
 
 import re
