@@ -14,7 +14,6 @@ TIER1_FILE = RESULTS_DIR / "extraction_results_tier1.csv"
 #PLACEHOLDER HEADER: Add logging configuration here:
 HEADERS = {
     #"User-Agent": "College Research Student/1.0 (placeholder@email.com)"
-    "User-Agent": "College of Wooster Research Student/1.0 (ykandel27@email.com)"
 }
 
 import re
@@ -28,23 +27,29 @@ METRIC_MAPPING = {
 
 
 def get_document_content(cik: int, edgar_url: str):
-    """Tries local JSON, falls back to SEC EDGAR, and resolves index pages."""
-    cik_folder = DATA_DIR / str(cik)
-    zip_path = cik_folder / f"{cik}_10k_section_html.json"
+    """Bypasses local JSON and forces download directly from SEC EDGAR."""
     
-    # Route 1: Local File
-    if zip_path.exists():
-        print(f"  -> Found local file for CIK {cik}. Cracking zip...")
-        try:
-            with zipfile.ZipFile(zip_path, 'r') as z:
-                inner_filename = z.namelist()[0]
-                with z.open(inner_filename) as f:
-                    return json.load(f), "local_json"
-        except Exception as e:
-            print(f"  -> Error reading local zip: {e}")
+    # --- ROUTE 1 BYPASSED: Local files are suspected to be corrupted/stripped ---
+    # cik_folder = DATA_DIR / str(cik)
+    # zip_path = cik_folder / f"{cik}_10k_section_html.json"
+    # 
+    # if zip_path.exists():
+    #     print(f"  -> Found local file for CIK {cik}. Cracking zip...")
+    #     try:
+    #         with zipfile.ZipFile(zip_path, 'r') as z:
+    #             inner_filename = z.namelist()[0]
+    #             with z.open(inner_filename) as f:
+    #                 return json.load(f), "local_json"
+    #     except Exception as e:
+    #         print(f"  -> Error reading local zip: {e}")
+
+    # Validate the URL before attempting a download
+    if not isinstance(edgar_url, str) or edgar_url.strip().upper() == "UNKNOWN":
+        print(f"  -> ERROR: Invalid or missing URL ('{edgar_url}') for CIK {cik}. Skipping download.")
+        return None, "invalid_url"
             
-    # Route 2: SEC Downloader
-    print(f"  -> Local folder missing. Downloading from SEC...")
+    # Route 2: SEC Downloader (Now the strict default)
+    print("  -> Bypassing local files. Downloading directly from SEC...")
     try:
         time.sleep(0.15)
         response = requests.get(edgar_url, headers=HEADERS, timeout=15)
@@ -69,7 +74,6 @@ def get_document_content(cik: int, edgar_url: str):
     except Exception as e:
         print(f"  -> SEC download failed: {e}")
         return None, "error"
-
     
 
 def parse_financial_tables(content, source):
@@ -210,19 +214,23 @@ def run_tier2_extraction():
         print("Error: Run Tier 1 first.")
         return
 
+    # Convert column to object type so it accepts our error string flags (like "NO_TABLES")
+    df["extracted_value"] = df["extracted_value"].astype(object)
+
     # Filter for the exact indices of rows that need processing
     missing_indices = df[df["winning_tier"] == "MISS"].index
     print(f"Found {len(missing_indices)} missing metrics to extract. Starting Tier 2 Pipeline...\n")
     
-    # Remove the [:5] later to run on the entire dataset
-    for idx in missing_indices[:5]: 
+    # Uncomment the [:5] line loop to run on the entire dataset:
+    #for idx in missing_indices[:5]:
+    for idx in missing_indices: 
         row = df.loc[idx]
         cik = row['cik']
         year = row['document_fiscal_year']
         url = row['edgar_url']
         target_metric = row['metric_name']
         
-        print(f"Processing CIK: {cik}, Year: {year} | Hunting for: {target_metric}")
+        print(f"Processing CIK: {cik}, Year: {year} | Looking for: {target_metric}")
         content, source = get_document_content(cik, url)
         
         if content:
@@ -248,6 +256,10 @@ def run_tier2_extraction():
         else:
             print("  -> ERROR: Download failed.\n")
             df.at[idx, "extracted_value"] = "DOWNLOAD_FAILED"
+
+        # SEC EDGAR Rate Limit Compliance (max 10 requests/sec)
+        if source == "sec_html":
+            time.sleep(0.15)
 
     # Save the updated DataFrame to a new CSV file to preserve the original Tier 1 data
     output_file = "results/tier2_results.csv"
