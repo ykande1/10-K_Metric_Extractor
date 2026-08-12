@@ -197,8 +197,8 @@ def query_phi3_mini(prompt):
 
 # --- TEST BLOCK ---
 if __name__ == "__main__":
-    test_cik = 1000180
-    test_year = 2014
+    test_cik = 785956
+    test_year = 2019
     target_metric = "Research and Development expense"
     
     print(f"Starting Tier 3 Ingestion Test for CIK {test_cik} ({test_year})\n")
