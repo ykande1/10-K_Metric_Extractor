@@ -93,7 +93,7 @@ def parse_financial_tables(content, source):
         return []
         
     print("  -> Parsing HTML structure...")
-    soup = BeautifulSoup(html_string, 'lxml')
+    soup = BeautifulSoup(html_string, 'html.parser')
     tables = soup.find_all('table')
     print(f"  -> Found {len(tables)} tables in the document.")
     return tables

@@ -15,7 +15,7 @@ if SRC_DIR not in sys.path:
 from tier_3_llm import get_sec_10k_url, clean_html_to_text, chunk_text, build_vector_database, create_extraction_prompt, query_phi3_mini
 
 HEADERS = {
-    "User-Agent": "WoosterDataProject ykandel27@wooster.edu",
+    "User-Agent": "WoosterDataProject student@email.com",  # ADD REAL EMAIL HERE
     "Accept-Encoding": "gzip, deflate"
 }
 

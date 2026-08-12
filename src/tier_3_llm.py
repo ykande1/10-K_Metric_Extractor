@@ -213,7 +213,7 @@ if __name__ == "__main__":
         
         # 1. Retrieve the top 4 most relevant chunks from ChromaDB
         print(f"\nSearching vector database for '{target_metric}'...")
-        # Increase n_results to 10 and make the query more explicit
+        # Increase n_results to 10 and make the query more explicit?
         results = db_collection.query(
             query_texts=[f"Total consolidated {target_metric} for the entire fiscal year {test_year}"],
             n_results=3

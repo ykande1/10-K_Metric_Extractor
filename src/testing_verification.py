@@ -21,7 +21,7 @@ from tier1_extractor import Tier1Extractor
 from tier2_extractor import get_document_content, parse_financial_tables, find_income_statement_table, extract_metric_value
 
 HEADERS = {
-    "User-Agent": "WoosterDataProject student@wooster.edu",
+    "User-Agent": "WoosterDataProject student@wooster.edu", #ADD REAL EMAIL HERE
     "Accept-Encoding": "gzip, deflate"
 }
 
@@ -40,8 +40,11 @@ def run_end_to_end_test():
     df = pd.read_csv(input_csv)
     df.columns = df.columns.str.lower().str.strip()
     
-    # 3. Sample 5 random cases for a quick test run
-    sample_size = min(5, len(df))
+    # Force strictly unique Company + Year combinations ---
+    df = df.drop_duplicates(subset=['entitycentralindexkey', 'documentfiscalyearfocus'])
+    
+    # 3. Sample 200 random cases 
+    sample_size = min(200, len(df))
     test_sample = df.sample(n=sample_size, random_state=42)
     print(f"Randomly selected {sample_size} cases.\n")
     
@@ -70,6 +73,23 @@ def run_end_to_end_test():
         
         print(f"--- Testing {current_step}/{sample_size} (CSV Row: {index}) | {company_name} (CIK: {cik}) | Year: {metric_year} | Metric: {metric} ---")
         
+        # --- NEW SAFETY CHECK ---
+        if metric_year == "UNKNOWN_METRIC_YEAR":
+            print("  -> ERROR: Missing fiscal year in source data. Skipping row...\n")
+            verification_data.append({
+                "cik": cik,
+                "company_name": company_name,
+                "document_fiscal_year": "UNKNOWN",
+                "metric_fiscal_year": "UNKNOWN",
+                "metric_name": metric,
+                "extracted_value": "MISSING_YEAR",
+                "winning_tier": "failed",
+                "edgar_url": "N/A",
+                "verified_correct?": "" 
+            })
+            continue # Instantly skip the rest of the loop and go to the next company
+        # ------------------------
+
         extracted_value = "MISS"
         winning_tier = "NONE"
         url = get_sec_10k_url(cik, metric_year)
