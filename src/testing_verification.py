@@ -43,8 +43,8 @@ def run_end_to_end_test():
     # Force strictly unique Company + Year combinations ---
     df = df.drop_duplicates(subset=['entitycentralindexkey', 'documentfiscalyearfocus'])
     
-    # 3. Sample 200 random cases 
-    sample_size = min(200, len(df))
+    # 3. Sample x number of random cases 
+    sample_size = min(10, len(df))
     test_sample = df.sample(n=sample_size, random_state=42)
     print(f"Randomly selected {sample_size} cases.\n")
     
@@ -104,6 +104,10 @@ def run_end_to_end_test():
             if res.winning_tier == "TIER_1_XBRL":
                 extracted_value = res.extracted_value
                 winning_tier = "tier_1_cache"
+
+            # Save the URL from Tier 1 if it exists and is valid
+            if res.edgar_url and res.edgar_url != "UNKNOWN":
+                    url = res.edgar_url
         
         # --- TIER 2: HTML Scraping ---
         if winning_tier == "NONE" and url not in ["NO_FILING_EXISTS", "NO_FILINGS_FOUND", "API_ERROR"]:

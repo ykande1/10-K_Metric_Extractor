@@ -37,6 +37,7 @@ class ExtractionResult:
     audit_status: str = "UNVERIFIED"
     audit_notes: str = ""
 
+
 class Tier1Extractor:
     def __init__(self):
         self.mapping_df: Optional[pd.DataFrame] = None
@@ -62,25 +63,34 @@ class Tier1Extractor:
         self.query_df["cik"] = pd.to_numeric(self.query_df["cik"], errors="coerce").fillna(0).astype(int)
 
         # Load master XBRL data table
-        self.xbrl_df = pd.read_csv(DATA_DIR / "xbrl.csv", low_memory=False)
-        self.xbrl_df["EntityCentralIndexKey"] = pd.to_numeric(
-            self.xbrl_df["EntityCentralIndexKey"], errors="coerce"
-        ).fillna(0).astype(int)
+        xbrl_path = DATA_DIR / "original_xbrl_data.csv" if (DATA_DIR / "original_xbrl_data.csv").exists() else DATA_DIR / "xbrl.csv"
+        self.xbrl_df = pd.read_csv(xbrl_path, low_memory=False)
+        
+        # Standardize column header names for internal checks
+        cik_col = "entitycentralindexkey" if "entitycentralindexkey" in self.xbrl_df.columns else "EntityCentralIndexKey"
+        fy_col = "documentfiscalyearfocus" if "documentfiscalyearfocus" in self.xbrl_df.columns else "DocumentFiscalYearFocus"
 
-        # Convert decimal years to integers
-        self.xbrl_df["DocumentFiscalYearFocus"] = pd.to_numeric(
-            self.xbrl_df["DocumentFiscalYearFocus"], errors="coerce"
-        ).fillna(0).astype(int)
+        self.xbrl_df[cik_col] = pd.to_numeric(self.xbrl_df[cik_col], errors="coerce").fillna(0).astype(int)
+        self.xbrl_df[fy_col] = pd.to_numeric(self.xbrl_df[fy_col], errors="coerce").fillna(0).astype(int)
+        
+        # Store resolved column names
+        self._cik_col = cik_col
+        self._fy_col = fy_col
 
         logging.info("All resources successfully loaded into memory.")
 
-    def _resolve_filing_metadata(self, cik: int, year: int) -> tuple[str, str]:
+    def _resolve_filing_metadata(self, cik: int, year: Any) -> tuple[str, str]:
         """Helps match the exact SEC filing URL and accession number from query.csv."""
+        try:
+            year_int = int(year)
+        except (ValueError, TypeError):
+            return "UNKNOWN", "UNKNOWN"
+
         # Try matching periodOfReport first (e.g., "2016-12-31")
         match = self.query_df[
             (self.query_df["cik"] == cik) &
             (self.query_df["formType"] == "10-K") &
-            (self.query_df["periodOfReport"].astype(str).str.startswith(str(year)))
+            (self.query_df["periodOfReport"].astype(str).str.startswith(str(year_int)))
         ]
 
         # If periodOfReport fails, fallback to checking filedAt timestamp
@@ -88,7 +98,7 @@ class Tier1Extractor:
             match = self.query_df[
                 (self.query_df["cik"] == cik) &
                 (self.query_df["formType"] == "10-K") &
-                (self.query_df["filedAt"].astype(str).str.contains(f"{year}|{year+1}"))
+                (self.query_df["filedAt"].astype(str).str.contains(f"{year_int}|{year_int+1}"))
             ]
 
         if not match.empty:
@@ -96,16 +106,18 @@ class Tier1Extractor:
         return "UNKNOWN", "UNKNOWN"
 
     def extract_single_metric(
-        self, cik: int, ticker: str, company_name: str, year: int, metric_name: str, xbrl_col: str
+        self, cik: int, ticker: str, company_name: str, year: Any, metric_name: str, xbrl_col: str
     ) -> ExtractionResult:
         """Executes the Tier 1 XBRL dataframe check for a single metric."""
-        accession_no, edgar_url = self._resolve_filing_metadata(cik, year)
+        try:
+            year_int = int(year)
+        except (ValueError, TypeError):
+            year_int = 0
 
-        # Query xbrl.csv for facts matching CIK and Fiscal Year
-        xbrl_match = self.xbrl_df[
-            (self.xbrl_df["EntityCentralIndexKey"] == cik) &
-            (self.xbrl_df["DocumentFiscalYearFocus"] == year)
-        ]
+        accession_no, edgar_url = self._resolve_filing_metadata(cik, year_int)
+
+        # Query xbrl_df for facts matching CIK
+        xbrl_match = self.xbrl_df[self.xbrl_df[self._cik_col] == cik].copy()
 
         extracted_val = None
         source_snippet = ""
@@ -113,27 +125,59 @@ class Tier1Extractor:
         start_date = "N/A"
         end_date = "N/A"
 
-        # Check if column exists and grab valid annual rows
         if not xbrl_match.empty and xbrl_col in xbrl_match.columns:
-            valid_rows = xbrl_match.dropna(subset=[xbrl_col])
+            valid_rows = xbrl_match.dropna(subset=[xbrl_col]).copy()
+            
             if not valid_rows.empty:
-                # Grab the first valid row object
-                first_row = valid_rows.iloc[0]
-                extracted_val = float(first_row[xbrl_col])
+                # Identify date column if present
+                date_col = None
+                for candidate in ["end_date", "period_end_date", "ddate", "periodOfReport"]:
+                    if candidate in valid_rows.columns:
+                        date_col = candidate
+                        break
+
+                target_row = None
+
+                # 1. Primary Filter: End-date starts with or contains requested fiscal year
+                if date_col and year_int > 0:
+                    date_matches = valid_rows[
+                        valid_rows[date_col].astype(str).str.startswith(str(year_int))
+                    ]
+                    if not date_matches.empty:
+                        target_row = date_matches.iloc[0]
+
+                # 2. Secondary Filter: DocumentFiscalYearFocus == year_int (sorted descending by date)
+                if target_row is None and year_int > 0:
+                    fy_matches = valid_rows[valid_rows[self._fy_col] == year_int]
+                    if not fy_matches.empty:
+                        if date_col:
+                            fy_matches = fy_matches.sort_values(by=date_col, ascending=False)
+                        target_row = fy_matches.iloc[0]
+
+                # 3. Final Fallback: First available valid row
+                if target_row is None:
+                    target_row = valid_rows.iloc[0]
+
+                extracted_val = float(target_row[xbrl_col])
                 winning_tier = "TIER_1_XBRL"
                 source_snippet = f"xbrl.csv -> Column: {xbrl_col}"
                 
-                # Capture the exact reporting period boundaries from the XBRL file
-                start_date = str(first_row.get("start_date", "UNKNOWN"))
-                end_date = str(first_row.get("end_date", "UNKNOWN"))
+                start_col = "start_date" if "start_date" in target_row else "period_start_date"
+                start_date = str(target_row.get(start_col, "UNKNOWN"))
+                end_date = str(target_row.get(date_col, "UNKNOWN")) if date_col else "UNKNOWN"
+
+        # Determine resolved metric year from period_end_date if available
+        resolved_metric_year = year_int
+        if end_date[:4].isdigit():
+            resolved_metric_year = int(end_date[:4])
 
         return ExtractionResult(
-            extraction_id=f"{cik}_{year}_{metric_name}",
+            extraction_id=f"{cik}_{year_int}_{metric_name}",
             cik=cik,
             ticker=ticker,
             company_name=company_name,
-            document_fiscal_year=year,
-            metric_fiscal_year=int(end_date[:4]) if end_date[:4].isdigit() else year,
+            document_fiscal_year=year_int,
+            metric_fiscal_year=resolved_metric_year,
             period_start_date=start_date,
             period_end_date=end_date,
             metric_name=metric_name,
@@ -145,7 +189,6 @@ class Tier1Extractor:
             edgar_url=edgar_url,
         )
 
-        
     def run_sweep(self, target_ciks: List[int], target_years: List[int]) -> pd.DataFrame:
         """Runs the extraction pipeline across a list of companies and fiscal years."""
         results = []
@@ -153,7 +196,6 @@ class Tier1Extractor:
         logging.info(f"Starting Tier 1 sweep across {total_queries} data points...")
 
         for cik in target_ciks:
-            # Look up ticker and corporate name from mapping.csv
             map_row = self.mapping_df[self.mapping_df["cik"] == cik]
             ticker = str(map_row["ticker"].values[0]) if not map_row.empty else "N/A"
             name = str(map_row["name"].values[0]) if not map_row.empty else f"CIK_{cik}"
@@ -165,34 +207,23 @@ class Tier1Extractor:
                     results.append(asdict(res))
 
         df_results = pd.DataFrame(results)
-        
-        # Calculate summary statistics
         success_count = len(df_results[df_results["winning_tier"] == "TIER_1_XBRL"])
         logging.info(f"Sweep Complete! Tier 1 successfully extracted {success_count} / {total_queries} metrics.")
         return df_results
 
 
 if __name__ == "__main__":
-    # Ensure results directory exists
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Initialize and load data
     extractor = Tier1Extractor()
     extractor.load_resources()
 
-    # Test Sample: Using CIKs from sample subset (SanDisk, AEP Industries, Scott Technologies; 2014-2016)
     test_ciks = [1000180, 785787, 720032]
     test_years = [2014, 2015, 2016]
 
-    # Execute the sweep
     output_df = extractor.run_sweep(target_ciks=test_ciks, target_years=test_years)
 
-
-#FOR TESTING PURPOSES, UNCOMMENT:
-
-    # Display console preview of the extractions for testing purposes
     print("\n--- TIER 1 EXTRACTION PREVIEW ---")
-
     preview_cols = [
         "extraction_id", 
         "company_name", 
@@ -203,22 +234,8 @@ if __name__ == "__main__":
         "extracted_value", 
         "winning_tier"
     ]
-    
     print(output_df[preview_cols].to_string(index=False))
-   
 
-#FOR FULL SWEEP ACROSS ALL COMPANIES, UNCOMMENT:
-
-    # Pull ALL unique company CIKs from mapping.csv
-    #all_ciks = extractor.mapping_df["clk"].unique().tolist()
-    
-    # Define your target historical year range (e.g., a 10-year sweep from 2011 to 2020)
-    #target_years = list(range(2011, 2021))
-
-    # Execute the full sweep across all companies
-    #output_df = extractor.run_sweep(target_ciks=all_ciks, target_years=target_years)
-
-    # Export results CSV 
     output_path = RESULTS_DIR / "extraction_results_tier1.csv"
     output_df.to_csv(output_path, index=False)
     print(f"\nFull audit log saved successfully to: {output_path}")
