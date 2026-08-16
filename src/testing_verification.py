@@ -12,7 +12,7 @@ if SRC_DIR not in sys.path:
     sys.path.append(SRC_DIR)
 
 # Import Tier 3 functions
-from tier_3_llm import get_sec_10k_url, clean_html_to_text, chunk_text, build_vector_database, create_extraction_prompt, query_phi3_mini
+from tier_3_llm import get_sec_10k_url, clean_html_to_text, chunk_text, build_vector_database, create_extraction_prompt, query_llama3
 
 # Import Tier 1 classes and functions
 from tier1_extractor import Tier1Extractor
@@ -137,7 +137,7 @@ def run_end_to_end_test():
                 extracted_value = url
                 winning_tier = "api_check_failed"
             else:
-                print("  -> Running Tier 3 (Phi-3 Mini)...")
+                print("  -> Running Tier 3 (Llama3)...")
                 try:
                     time.sleep(0.15)
                     response = requests.get(url, headers=HEADERS, timeout=15)
@@ -151,7 +151,7 @@ def run_end_to_end_test():
                     )
                     
                     final_prompt = create_extraction_prompt(results['documents'][0], metric, metric_year)
-                    extracted_value = query_phi3_mini(final_prompt)
+                    extracted_value = query_llama3(final_prompt)
                     winning_tier = "tier_3_llm"
                     
                 except Exception as e:

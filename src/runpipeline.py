@@ -12,7 +12,7 @@ SRC_DIR = os.path.join(BASE_DIR, "src")
 if SRC_DIR not in sys.path:
     sys.path.append(SRC_DIR)
 
-from tier_3_llm import get_sec_10k_url, clean_html_to_text, chunk_text, build_vector_database, create_extraction_prompt, query_phi3_mini
+from tier_3_llm import get_sec_10k_url, clean_html_to_text, chunk_text, build_vector_database, create_extraction_prompt, query_llama3
 
 HEADERS = {
     "User-Agent": "WoosterDataProject student@email.com",  # ADD REAL EMAIL HERE
@@ -71,7 +71,7 @@ def process_tier3_batch():
             
             retrieved_paragraphs = results['documents'][0]
             final_prompt = create_extraction_prompt(retrieved_paragraphs, metric, year)
-            extracted_value = query_phi3_mini(final_prompt)
+            extracted_value = query_llama3(final_prompt)
             
             # 4. Save back to dataframe
             df.at[index, 'extracted_value'] = extracted_value

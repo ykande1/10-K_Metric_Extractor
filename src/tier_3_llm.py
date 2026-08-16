@@ -152,14 +152,14 @@ Rules:
 
 import json
 
-def query_phi3_mini(prompt):
+def query_llama3(prompt):
     """Sends the prompt to Ollama with strict JSON mode enabled."""
-    print("  -> Sending context to Phi-3 Mini for JSON extraction...")
+    print("  -> Sending context to Llama 3 for JSON extraction...")
     
     api_url = "http://localhost:11434/api/generate" 
     
     payload = {
-        "model": "phi3:mini",
+        "model": "llama3",
         "prompt": prompt,
         "format": "json",  # Forces Ollama to strictly output valid JSON
         "stream": False,
@@ -197,8 +197,8 @@ def query_phi3_mini(prompt):
 
 # --- TEST BLOCK ---
 if __name__ == "__main__":
-    test_cik = 785956
-    test_year = 2019
+    test_cik = 1137411
+    test_year = 2014
     target_metric = "Research and Development expense"
     
     print(f"Starting Tier 3 Ingestion Test for CIK {test_cik} ({test_year})\n")
@@ -206,12 +206,12 @@ if __name__ == "__main__":
     
     if url and url not in ["NO_FILING_EXISTS", "NO_FILINGS_FOUND", "API_ERROR"]:
         print("Downloading document...")
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=HEADERS, timeout =15)
         clean_text = clean_html_to_text(response.text)
         document_chunks = chunk_text(clean_text)
         db_collection = build_vector_database(document_chunks, test_cik, test_year)
         
-        # 1. Retrieve the top 4 most relevant chunks from ChromaDB
+        # 1. Retrieve the top 3 most relevant chunks from ChromaDB
         print(f"\nSearching vector database for '{target_metric}'...")
         # Increase n_results to 10 and make the query more explicit?
         results = db_collection.query(
@@ -224,8 +224,8 @@ if __name__ == "__main__":
         # 3. Build the strict prompt
         final_prompt = create_extraction_prompt(retrieved_paragraphs, target_metric, test_year)
         
-        # 4. Send to Phi-3 Mini
-        extracted_value = query_phi3_mini(final_prompt)
+        # 4. Send to Llama 3
+        extracted_value = query_llama3(final_prompt)
         
         print("\n" + "="*40)
         print("FINAL TIER 3 EXTRACTION RESULT:")
