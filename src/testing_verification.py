@@ -21,7 +21,7 @@ from tier1_extractor import Tier1Extractor
 from tier2_extractor import get_document_content, parse_financial_tables, find_income_statement_table, extract_metric_value
 
 HEADERS = {
-    "User-Agent": "WoosterDataProject student@wooster.edu", #ADD REAL EMAIL HERE
+    "User-Agent": "WoosterDataProject student@email.com", #ADD REAL EMAIL HERE
     "Accept-Encoding": "gzip, deflate"
 }
 
@@ -44,7 +44,7 @@ def run_end_to_end_test():
     df = df.drop_duplicates(subset=['entitycentralindexkey', 'documentfiscalyearfocus'])
     
     # 3. Sample x number of random cases 
-    sample_size = min(10, len(df))
+    sample_size = min(200, len(df))
     test_sample = df.sample(n=sample_size, random_state=42)
     print(f"Randomly selected {sample_size} cases.\n")
     

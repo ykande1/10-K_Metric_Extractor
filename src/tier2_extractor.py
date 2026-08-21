@@ -13,7 +13,7 @@ DATA_DIR = BASE_DIR / "data" / "10k_section"
 TIER1_FILE = RESULTS_DIR / "extraction_results_tier1.csv"
 
 HEADERS = {
-    "User-Agent": "College of Wooster Research Student/1.0 (student@email.com)" #ADD REAL EMAIL HERE
+    "User-Agent": "WoosterDataProject student@email.com" #ADD REAL EMAIL HERE
 }
 
 # Standardize and prioritize the variations in SEC metric names
